@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config-map
+data:
+  mysql-server: todo-mysql
+  mysql-database-name: todoDb
+  mysql-user-username: root  
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+    name: mysql-pass
+type: Opaque
+data:
+    mysql-root-password: cm9vdHBhc3N3b3Jk       ## rootpassword
+    mysql-user-password: dXNlcnBhc3N3b3Jk       ## userpassword
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    app: mysql
+spec:
+  storageClassName: mysql-pv
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/data"
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  labels:
+    app: mysql
+spec:
+  storageClassName: mysql-pv
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app-mysql
+  labels:
+    app: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-mysql-app
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: todo-mysql-app
+    spec:
+      containers:
+      - image: mysql
+        name: mysql
+        env:
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config-map
+              key: mysql-database-name
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-root-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+      nodePort: 30007
+      protocol: TCP
+  selector:
+    app: todo-mysql-app
+  type: NodePort
